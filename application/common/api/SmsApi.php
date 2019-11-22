@@ -20,6 +20,7 @@ class SmsApi
             'send_code'         => 'SMS_147437513',//发送验证码
             'winning_notice'    => 'SMS_147417695',//中奖结果通知
             'resetpwd'          => 'SMS_152700174',
+            'RemindShop'          => 'SMS_176914768',
         ];
         $this->signName = '回响科技';
     }

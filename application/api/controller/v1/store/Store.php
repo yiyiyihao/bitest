@@ -26,14 +26,6 @@ class Store extends Api
 
     public function getStoreList()
     {
-        if(isset($this->postParams['lang']) && $this->postParams['lang'] == 'en-us'){
-            \think\facade\Lang::range('en-us');
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/en-us.php';
-            \think\facade\Lang::load($file);
-        }else{
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/zh-cn.php';
-            \think\facade\Lang::load($file);
-        }
 
         $params = $this -> postParams;
         $page = !empty($params['page']) ? intval($params['page']) : 1;
@@ -112,6 +104,23 @@ class Store extends Api
         if(!$res){
             $this->_returnMsg(['code' => 1, 'msg' => $userService->error]);die;
         }
+        $token = $params['token'];
+        $obj = new \app\service\service\Zhongtai();
+        $openid = $obj->register($usermobile,$usermobile,md5($password),md5($password),$token);
+        //中台中添加店铺
+        $params = [
+            'source'=>'shop',
+            'openid'=>$openid,
+            'shop_name'=>$params['name'],
+            'mobile'=>$usermobile,
+            'region_id'=> 0,
+            'region_name'=>'',
+            'address'=>$params['address'],
+            'business_scope'=>'',
+            'summary'=>'',
+        ];
+        $result = $obj -> create_shop($params,$token);
+        $data['shop_code'] = $result;
 
         $pkId = db('store')->insertGetId($data);
 
@@ -121,7 +130,7 @@ class Store extends Api
 
         //配置门店管理员
 
-        $this->admin(null,null,$pkId,$username,$usermobile,$pwd);
+        $this->admin(null,null,$pkId,$username,$usermobile,$pwd,$openid);
 
     }
 
@@ -203,14 +212,6 @@ class Store extends Api
 
     public function storeType($tag = false)
     {
-        if(isset($this->postParams['lang']) && $this->postParams['lang'] == 'en-us'){
-            \think\facade\Lang::range('en-us');
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/en-us.php';
-            \think\facade\Lang::load($file);
-        }else{
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/zh-cn.php';
-            \think\facade\Lang::load($file);
-        }
         $storeTypes = [
             [
                 'code' => 1,
@@ -277,12 +278,13 @@ class Store extends Api
     /**
      * 配置管理员
      */
-    public function admin($groupId = 0, $groupName = '',$store_id='',$username='',$usermobile='',$pwd='')
+    public function admin($groupId = 0, $groupName = '',$store_id='',$username='',$usermobile='',$pwd='',$openid)
     {
         $groupId = $groupId ? $groupId : STORE_SUPER_ADMIN;
         $groupName = $groupName ? $groupName : '管理员';
 
         $params = $this->postParams;
+        $token = $params['token'] ?? '';
         $fuserId = isset($params['fuser_id']) ? intval($params['fuser_id']) : 0;
 //        $faceId = isset($params['face_id']) ? intval($params['face_id']) : '';        //识别的人脸用户唯一标识(腾讯)
         $faceImg = isset($params['avatar']) ? trim($params['avatar']) : '';
@@ -383,7 +385,8 @@ class Store extends Api
                 $this->_returnMsg(['code' => 0, 'msg' => '成功','data' => ['store_id' => $store_id]]);die;
             }
         }else{
-            $userId = $userService->register($usermobile, $password, $params);
+            $token = $params['token'] ?? '';
+            $userId = $userService->register($usermobile, $password, $params,0,1,$token,$openid);
             if ($userId === FALSE) {
                 $this->_returnMsg(['code' => 1, 'msg' => $userService->error]);die;
             }

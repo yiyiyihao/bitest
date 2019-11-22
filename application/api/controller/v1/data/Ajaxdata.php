@@ -14,12 +14,18 @@ class Ajaxdata extends Api
     private $date;
     private $storeId;
     private $storeVisits;
-    public $noAuth = ['homedata','getTitle'];
+    public $noAuth = ['homedata','getTitle','get_menu'];
     public function __construct(Request $request){
         parent::__construct($request);
         //取得请求日$date = Request::post('date');期
         $date = isset($this -> postParams['date']) ? $this -> postParams['date'] : date('Y-m-d');
-        $this->date = $date;
+        $dateTime = isset($this -> postParams['date_time']) ? $this -> postParams['date_time'] : '';
+        if($dateTime == date('Y-m-d',strtotime("-1 day"))){
+            $this->date = $dateTime;
+        }else{
+            $this->date = $date;
+        }
+
         //$storeId 之前是从session中去，现在也可以在其登入的接口写入session或者跟token一起写入cache缓存
         $authorization = !empty(\think\facade\Request::header('authentication')) ? \think\facade\Request::header('authentication') : input('token');
         $userId = cache($authorization)['admin_user']['user_id'] ?? 1;
@@ -33,14 +39,14 @@ class Ajaxdata extends Api
         }
         $this->storeVisits = $storeVisits;
 
-        $storeId = isset($this -> postParams['store_id']) ? $this -> postParams['store_id'] : (isset($storeVisits[0]['store_id']) ?$storeVisits[0]['store_id']:$storeId);
-        if(count($storeIds) > 1 && !isset($this -> postParams['store_id'])){
+        $storeId = isset($this -> postParams['store_id']) && !empty($this -> postParams['store_id']) ? $this -> postParams['store_id'] : (isset($storeVisits[0]['store_id']) ?$storeVisits[0]['store_id']:$storeId);
+        if(count($storeIds) > 1 && (!isset($this -> postParams['store_id']) || empty($this -> postParams['store_id']))){
             $this->storeId = $storeIds;
         }else{
             $this->storeId = $storeId;
         }
         $this->dataService = new Dataset();
-        $this->dataService->initialize($this->storeId, 0, 0, $date);
+        $this->dataService->initialize($this->storeId, 0, 0, $this->date);
 
     }
 
@@ -48,77 +54,16 @@ class Ajaxdata extends Api
      * 异步获取首页数据
      */
     public function homedata(){
+        $dateTime = $this -> postParams['date_time'] ?? '';
         $authorization = !empty(\think\facade\Request::header('authentication')) ? \think\facade\Request::header('authentication') : input('token');
         $group_id = cache($authorization)['admin_user']['group_id'] ?? 1;
-        $storeIds = cache($authorization)['admin_user']['store_ids'] ?? [18,18];
-        if(isset($this->postParams['lang']) && $this->postParams['lang'] == 'en-us'){
-            \think\facade\Lang::range('en-us');
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/en-us.php';
-            \think\facade\Lang::load($file);
-        }else{
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/zh-cn.php';
-            \think\facade\Lang::load($file);
-        }
+        $storeIds = (isset($this -> postParams['store_id']) && !empty($this -> postParams['store_id'])) ? [$this -> postParams['store_id']] : cache($authorization)['admin_user']['store_ids'];
 
         if($group_id == 5){ //体验帐号
             $faceApi =  new \app\common\api\FaceApi();
             $ageLevels = $faceApi->ageLvels;
             $device_ids = explode(',',cache($authorization)['admin_user']['email']);
             $where = [['device_id','in',$device_ids],['capture_date','=',$this->date]];//$device_ids到时候全局替换成体验帐号下的device
-            $data1 = db('day_capture')->where($where)->group('age_level')->field('age_level,count(*)')->select();//年龄段比
-            $data2 = db('day_capture')->where($where)->group('user_type')->field('user_type,count(*)')->select();//新老用户
-            $getVisitData = $this->getVisitData();
-            $customerTotal = $getVisitData['people'];  //人数
-            $personTotal = $getVisitData['total'];    //人次
-            $aveTimeline = 1;
-            $aveVisit = $customerTotal && $personTotal ? round($personTotal/$customerTotal, 2) : 0;
-            $womans = $getVisitData['people_w'];
-            $mans = $customerTotal - $womans;
-            $temp['3'] = 0;
-            $total = 0;
-            if(!empty($data1)){
-                foreach($data1 as $k => $v){
-                    $temp[$v['age_level']] = $v['count(*)'];
-                    $total += $v['count(*)'];
-                }
-            }
-
-            $temp['3'] = $temp['3'] + ($customerTotal - $total);
-            $countValue = 1; //杠杆
-            foreach($ageLevels as $key => $value){
-                $agedata[$key-1]['name'] = $value['name'];
-                if (isset($temp[$key])) {
-                    $count = $temp[$key];
-                }else{
-                    $count = $value['count'];
-                }
-                $count = $count * $countValue;
-                $agedata[$key-1]['value'] = $count;
-
-            }
-            $tem['1'] = 0;
-            foreach($data2 as $kk => $vv){
-                $tem[$vv['user_type']] = $vv['count(*)'];
-            }
-
-            $data = [
-                'day'           => $this->date,
-                'daylist'       => $this->dataService->dayList,
-                'normaldata'    => ['aveTimeline'=>$aveTimeline,'aveVisit'=>$aveVisit,'customerTotal'=>$customerTotal,'personTotal'=>$personTotal],
-                'agedata'       => $agedata,
-                'genderdata'    => [['name'=>'男士','value'=>$mans],['name'=>'女士','value'=>$womans],],
-                'customerdata'  => [['name'=>lang('新客户'),'value'=>$tem['1']],['name'=>lang('老客户'),'value'=>$customerTotal-$tem['1']],],
-                'personList'    => $this->dataService->getPersonDatalist(),
-                'todayVisit'    => $getVisitData,
-                'storeVisits'   => $this->storeVisits,
-            ];
-            $this->_returnMsg(['code' => 0, 'msg' => '成功','data' => $data]);die;
-        }
-        // 多门店
-        if(count($storeIds) >1 && !isset($this -> postParams['store_id'])){
-            $faceApi =  new \app\common\api\FaceApi();
-            $ageLevels = $faceApi->ageLvels;
-            $where = [['store_id','in',$storeIds],['capture_date','=',$this->date]];//$device_ids到时候全局替换成体验帐号下的device
             $data1 = db('day_capture')->where($where)->group('age_level')->field('age_level,count(*)')->select();//年龄段比
             $data2 = db('day_capture')->where($where)->group('user_type')->field('user_type,count(*)')->select();//新老用户
             $getVisitData = $this->getVisitData();
@@ -168,8 +113,90 @@ class Ajaxdata extends Api
             ];
             $this->_returnMsg(['code' => 0, 'msg' => '成功','data' => $data]);die;
         }
+        // 多门店
+//        if(count($storeIds) >1 && !isset($this -> postParams['store_id'])){
+            $title = $this->getTitle($this->storeId);
+            $faceApi =  new \app\common\api\FaceApi();
+            $ageLevels = $faceApi->ageLvels;
+            $where = [['store_id','in',$storeIds],['capture_date','=',$this->date]];//$device_ids到时候全局替换成体验帐号下的device
+            if($dateTime == '5min'){
+                $timeStamp = 300;
+                $where[] = ['recent_time','>',time()-$timeStamp];
+            }elseif($dateTime == '30min'){
+                $timeStamp = 1800;
+                $where[] = ['recent_time','>',time()-$timeStamp];
+            }elseif($dateTime == '1h'){
+                $timeStamp = 3600;
+                $where[] = ['recent_time','>',time()-$timeStamp];
+            }elseif($dateTime == '6h'){
+                $timeStamp = 6 * 3600;
+                $where[] = ['recent_time','>',time()-$timeStamp];
+            }elseif($dateTime == '12h'){
+                $timeStamp = 12 * 3600;
+                $where[] = ['recent_time','>',time()-$timeStamp];
+            }
+
+            $data1 = db('day_capture')->where($where)->group('age_level')->field('age_level,count(*)')->select();//年龄段比
+            $data2 = db('day_capture')->where($where)->group('user_type')->field('user_type,count(*)')->select();//新老用户
+            $getVisitData = $this->getVisitData(0,$dateTime);
+            $customerTotal = $getVisitData['people'];  //人数
+            $personTotal = $getVisitData['total'];    //人次
+            $aveTimeline = 1;
+            $aveVisit = $customerTotal && $personTotal ? round($personTotal/$customerTotal, 2) : 0;
+            $womans = $getVisitData['people_w'];
+            $in = $getVisitData['people_in'];
+            $out = $getVisitData['people_out'];
+            $other = $getVisitData['people_other'];
+            $mans = $customerTotal - $womans;
+            $temp['3'] = 0;
+            $total = 0;
+            if(!empty($data1)){
+                foreach($data1 as $k => $v){
+                    $temp[$v['age_level']] = $v['count(*)'];
+                    $total += $v['count(*)'];
+                }
+            }
+
+            $temp['3'] = $temp['3'] + ($customerTotal - $total);
+            $countValue = 1; //杠杆
+            foreach($ageLevels as $key => $value){
+                $agedata[$key-1]['name'] = $value['name'];
+                if (isset($temp[$key])) {
+                    $count = $temp[$key];
+                }else{
+                    $count = $value['count'];
+                }
+                $count = $count * $countValue;
+                $agedata[$key-1]['value'] = $count;
+
+            }
+            $tem['1'] = 0;
+            foreach($data2 as $kk => $vv){
+                $tem[$vv['user_type']] = $vv['count(*)'];
+            }
+
+            $data = [
+                'day'           => $this->date,
+                'daylist'       => $this->dataService->dayList,
+                'normaldata'    => ['aveTimeline'=>$aveTimeline,'aveVisit'=>$aveVisit,'customerTotal'=>$customerTotal,'personTotal'=>$personTotal],
+                'agedata'       => $agedata,
+                'genderdata'    => [['name'=>lang('男士'),'value'=>$mans],['name'=>lang('女士'),'value'=>$womans],],
+                'customerdata'  => [['name'=>lang('新客户'),'value'=>$tem['1']],['name'=>lang('老客户'),'value'=>$customerTotal-$tem['1']],],
+                'personList'    => $this->dataService->getPersonDatalist(0, 0, FALSE, FALSE,1,10, FALSE, $dateTime),
+                'trend'         => [['name'=>lang('进店'),'value'=>$in],['name'=>lang('离店'),'value'=>$out],['name'=>lang('其它'),'value'=>$other]],
+                'todayVisit'    => $getVisitData,
+                'storeVisits'   => $this->storeVisits,
+                'title'         => $title,
+            ];
+            $this->_returnMsg(['code' => 0, 'msg' => '成功','data' => $data]);die;
+//        }
         //获取投屏标题
         $title = $this->getTitle($this->storeId);
+        $getVisitData = $this->getVisitData();
+        $customerTotal = $getVisitData['total'];  //人数
+        $in = $getVisitData['people_in'];
+        $out = $getVisitData['people_out'];
+        $other = $customerTotal - $in - $out;
         $data = [
             'day'           => $this->date,
             'daylist'       => $this->dataService->dayList,
@@ -178,7 +205,8 @@ class Ajaxdata extends Api
             'genderdata'    => $this->dataService->getGenderDataset(),
             'customerdata'  => $this->dataService->getCustomerDataset(),
             'personList'    => $this->dataService->getPersonDatalist(),
-            'todayVisit'    => $this->getVisitData(),
+            'todayVisit'    => $getVisitData,
+            'trend'         => [['name'=>lang('进店'),'value'=>$in],['name'=>lang('离店'),'value'=>$out],['name'=>lang('其它'),'value'=>$other]],
             'storeVisits'   => $this->storeVisits,
             'title'         => $title,
         ];
@@ -241,6 +269,7 @@ class Ajaxdata extends Api
             $date = isset($this->postParams['date']) ? trim($this->postParams['date']) : '';
             $count = db('day_visit')->where($vwhere)->count();
             $dates = db('day_visit')->where($vwhere)->order('add_time DESC')->limit(($page-1)*$size,$size)->field('visit_id, store_id, capture_date, visit_counts, stay_times')->select();
+            $day = date('Y-m-d');
             if ($dates) {
                 foreach ($dates as $key => $value) {
                     $dates[$key]['store_name'] = $store && isset($store[$value['store_id']]) ? trim($store[$value['store_id']]) : '';
@@ -275,13 +304,19 @@ class Ajaxdata extends Api
         }
         //计算累计到访次数
         $user['total_visits'] = db('day_visit')->where($vwhere)->sum('visit_counts');
-
+        $faceApi    =   new \app\common\api\FaceApi();
+        //取得性别列表
+        $user['age_text'] = $faceApi->ageLvels[$user['age_level']]['name'];
+        $user['age_tag'] = $faceApi->ageLvels[$user['age_level']]['tag'][$user['gender_id']];
         if ($date && $storeId) {
             $return = [
                 'pics' => $pics,
             ];
         }else{
+            $user['role_name'] = $user['user_type'];
+//            $user['tag'] = $user['tag'];
             unset($user['is_admin'], $user['user_type'], $user['phone']);
+            $user['store_name'] = isset($dates) && !empty($dates) ? $dates[0]['store_name'] : '';
             $return = [
                 'user'  =>  $user,
                 'count' =>  $count,
@@ -536,24 +571,67 @@ class Ajaxdata extends Api
      * @param string $storeVisit
      * @return false|string
      */
-    public function getVisitData($storeId = 0, $num = 0,$color = false,$storeVisit = "")
+    public function getVisitData($storeId = 0, $dateTime = 0)
     {
         $storeId = $storeId ? $storeId : $this->storeId;
         $count = 1;
-        //huangyihao
-//        if(input('lang') == 'en-us'){
-//            $timestamp = time() - 3600*8;
-//            $dayBeginTime = mktime(0, 0, 0, date("m",$timestamp), date("d",$timestamp), date("y",$timestamp));
-//        }else{
-            $timestamp = time();
-            $dayBeginTime = mktime(0, 0, 0, date("m"), date("d"), date("y"));
-//        }
 
+        if($dateTime == '5min'){
+            $timeStamp = 5 * 60;
+            $index = 5;
+            $step = 60;
+            $dayBeginTime = strtotime(date('Y-m-d H:i:0',time() - $timeStamp));
+            $result = $this ->getVisitData1($storeId, $index, $step, $timeStamp,$dayBeginTime);
+            return $result;
+        }elseif($dateTime == '30min'){
+            $timeStamp = 30 * 60;
+            $index = 30;
+            $step = 60;
+            $dayBeginTime = strtotime(date('Y-m-d H:i:0',time() - $timeStamp));
+            $result = $this ->getVisitData1($storeId, $index, $step, $timeStamp,$dayBeginTime);
+            return $result;
+        }elseif($dateTime == '1h'){
+            $timeStamp = 60 * 60;
+            $index = 12;
+            $step = 300;
+            $dayBeginTime = strtotime(date('Y-m-d H:i:0',time() - $timeStamp));
+            $result = $this ->getVisitData1($storeId, $index, $step, $timeStamp,$dayBeginTime);
+            return $result;
+        }elseif($dateTime == '6h'){
+            $timeStamp = 6 * 3600;
+            $index = 6;
+            $step = 3600;
+            $dayBeginTime = strtotime(date('Y-m-d H:i:0',time() - $timeStamp));
+            $result = $this ->getVisitData1($storeId, $index, $step, $timeStamp,$dayBeginTime);
+            return $result;
+        }elseif($dateTime == '12h'){
+            $timeStamp = 12 * 3600;
+            $index = 12;
+            $step = 3600;
+            $dayBeginTime = strtotime(date('Y-m-d H:i:0',time() - $timeStamp));
+            $result = $this ->getVisitData1($storeId, $index, $step, $timeStamp,$dayBeginTime);
+            return $result;
+        }elseif($dateTime == date('Y-m-d',strtotime('-1 day'))){
+            $dayBeginTime = strtotime('yesterday');
+        }else{
+            $dayBeginTime = mktime(0, 0, 0, date("m"), date("d"), date("y"));
+        }
+
+
+
+
+        $timestamp = time();
+        /*$dayBeginTime = mktime(0, 0, 0, date("m"), date("d"), date("y"));*/
         $offset = 0;//统计开始时间
         $thistime = $timestamp;
         $index = 24;//统计截止时间
         $visitCount = [];
         $total = 0;
+
+        $authorization = !empty(\think\facade\Request::header('authentication')) ? \think\facade\Request::header('authentication') : input('token');
+        $group_id = cache($authorization)['admin_user']['group_id'] ?? 1;
+        $storeIds = isset($this -> postParams['store_id']) && !empty($this -> postParams['store_id']) ? [$this -> postParams['store_id']] : cache($authorization)['admin_user']['store_ids'];
+
         for($i = $offset; $i < $index; $i++){
             if ($i > $offset) {
                 $beginTime = $dayBeginTime + (($i-1) * 3600);//整点开始时间
@@ -573,9 +651,6 @@ class Ajaxdata extends Api
 //                $beginTime = $beginTime + 3600*8;
 //                $endTime = $endTime + 3600*8;
 //            }
-            $authorization = !empty(\think\facade\Request::header('authentication')) ? \think\facade\Request::header('authentication') : input('token');
-            $group_id = cache($authorization)['admin_user']['group_id'] ?? 1;
-            $storeIds = cache($authorization)['admin_user']['store_ids'] ?? [18,18];
             if($group_id == 5){//体验帐号
                 $device_ids = explode(',',cache($authorization)['admin_user']['email']);
                 $where = [
@@ -623,22 +698,125 @@ class Ajaxdata extends Api
             $dataset[$i]['women'] = $faceVisit-$man;
             $total += $faceVisit;
         }
+
+        //进店
+        $people_in = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [strtotime($this->date), strtotime($this->date)+86400]],['position_type','=',1]])->group('fuser_id')->count();
+        //离店
+        $people_out = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [strtotime($this->date), strtotime($this->date)+86400]],['position_type','=',2]])->group('fuser_id')->count();
+        $people_other = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [strtotime($this->date), strtotime($this->date)+86400]],['position_type','=',3]])->group('fuser_id')->count();
         if($group_id == 5){//体验帐号
             $people = db('face_token')->where([['device_id' ,'in', $device_ids],['add_time' , 'between', [strtotime($this->date), strtotime($this->date)+86400]]])->group('fuser_id')->count();//人数
             $people_w = db('face_token')->where([['device_id' ,'in', $device_ids],['add_time' , 'between', [strtotime($this->date), strtotime($this->date)+86400]],['gender','=',2]])->group('fuser_id')->count();//人数
 
             return ['total'=>$total,'count'=>$dataset,'people'=>$people,'people_w'=>$people_w];
         }elseif(count($storeIds) > 1){
-            $people = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [strtotime($this->date), strtotime($this->date)+86400]]])->group('fuser_id')->count();//人数
-            $people_w = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [strtotime($this->date), strtotime($this->date)+86400]],['gender','=',2]])->group('fuser_id')->count();//人数
-
-            return ['total'=>$total,'count'=>$dataset,'people'=>$people,'people_w'=>$people_w];
         }
+        $people = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [strtotime($this->date), strtotime($this->date)+86400]]])->group('fuser_id')->count();//人数
+        $people_w = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [strtotime($this->date), strtotime($this->date)+86400]],['gender','=',2]])->group('fuser_id')->count();//人数
+        return ['total'=>$total,'count'=>$dataset,'people'=>$people,'people_w'=>$people_w,'people_in'=>$people_in,'people_out'=>$people_out,'people_other'=>$people_other];
 
-
-        return ['total'=>$total,'count'=>$dataset];
     }
 
+    public function getVisitData1($storeId = 0, $index=24, $step=3600, $timeStamp =0,$dayBeginTime)
+    {
+        $storeId = $storeId ? $storeId : $this->storeId;
+        $count = 1;
+
+        $timestamp = time();
+        $offset = 0;//统计开始时间
+        $thistime = $timestamp;
+        $index = 24;//统计截止时间
+        $visitCount = [];
+        $total = 0;
+
+        $authorization = !empty(\think\facade\Request::header('authentication')) ? \think\facade\Request::header('authentication') : input('token');
+        $group_id = cache($authorization)['admin_user']['group_id'] ?? 1;
+        $storeIds = isset($this -> postParams['store_id']) && !empty($this -> postParams['store_id']) ? [$this -> postParams['store_id']] : cache($authorization)['admin_user']['store_ids'];
+
+        for($i = $offset; $i < $index; $i++){
+            if ($i > $offset) {
+                $beginTime = $dayBeginTime + (($i-1) * $step);//整点开始时间
+            }else{
+                $beginTime = $dayBeginTime;
+            }
+            $endTime  = $dayBeginTime + ($i * $step);//整点结束时间
+            $showtime = $endTime;
+            if ($beginTime > $thistime) {
+                continue;
+            }
+            if ($endTime > $thistime) {
+                $showtime = $endTime = $timestamp;
+            }
+            //huangyihao
+//            if(input('lang') == 'en-us'){
+//                $beginTime = $beginTime + 3600*8;
+//                $endTime = $endTime + 3600*8;
+//            }
+            if($group_id == 5){//体验帐号
+                $device_ids = explode(',',cache($authorization)['admin_user']['email']);
+                $where = [
+                    ['device_id' ,'in', $device_ids],
+                    ['add_time' ,'between', [$beginTime, ($endTime-1)]]
+                ];
+            }
+//            elseif(count($storeIds) > 1){
+//                $where = [
+//                    ['store_id' ,'IN', $storeId],
+//                    ['add_time' ,'between', [$beginTime, ($endTime-1)]]
+//                ];
+//            }
+            else{
+                $where = [
+                    ['store_id' ,'IN', $storeId],
+                    ['add_time' ,'between', [$beginTime, ($endTime-1)]]
+                ];
+            }
+
+
+//            $where = [
+//                ['device_id' ,'in', $devices],
+//                ['add_time' ,'between', [$beginTime, ($endTime-1)]]
+//            ];
+
+            //获取时间段门店访问人次
+            $where_man[] = ['gender','=',1];
+            $cachetime = 24*60*60;
+            if ($beginTime <= time() && $endTime >= time()) {
+                //获取时间段门店访问人次
+                $faceVisit = db('face_token')->where($where)->count();
+                $man = db('face_token')->where($where)->where($where_man)->count();
+            }else{
+                //获取时间段门店访问人次
+                $faceVisit = db('face_token')->where($where)->cache($cachetime)->count();
+                $man = db('face_token')->where($where)->cache($cachetime)->where($where_man)->count();
+            }
+
+            $faceVisit = $faceVisit > 0 ? $faceVisit * $count : 0;
+            $man = $man > 0 ? $man * $count : 0;
+            $dataset[$i]['label'] = date('H:i:s', $showtime);
+            $dataset[$i]['line'] = $faceVisit;
+            $dataset[$i]['man'] = $man;
+            $dataset[$i]['women'] = $faceVisit-$man;
+            $total += $faceVisit;
+        }
+
+        //进店
+        $people_in = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [time()-$timeStamp, time()]],['position_type','=',1]])->group('fuser_id')->count();
+        //离店
+        $people_out = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [time()-$timeStamp, time()]],['position_type','=',2]])->group('fuser_id')->count();
+        $people_other = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [time()-$timeStamp, time()]],['position_type','=',3]])->group('fuser_id')->count();
+        if($group_id == 5){//体验帐号
+            $people = db('face_token')->where([['device_id' ,'in', $device_ids],['add_time' , 'between', [time()-$timeStamp, time()]]])->group('fuser_id')->count();//人数
+            $people_w = db('face_token')->where([['device_id' ,'in', $device_ids],['add_time' , 'between', [time()-$timeStamp, time()]],['gender','=',2]])->group('fuser_id')->count();//人数
+
+            return ['total'=>$total,'count'=>$dataset,'people'=>$people,'people_w'=>$people_w];
+        }elseif(count($storeIds) > 1){
+        }
+        $people = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [time()-$timeStamp, time()]]])->group('fuser_id')->count();//人数
+        $people_w = db('face_token')->where([['store_id' ,'in', $storeIds],['add_time' , 'between', [time()-$timeStamp, time()]],['gender','=',2]])->group('fuser_id')->count();//人数
+        return ['total'=>$total,'count'=>$dataset,'people'=>$people,'people_w'=>$people_w,'people_in'=>$people_in,'people_out'=>$people_out,'people_other'=>$people_other];
+
+    }
     public function getUsers()
     {
         $params = $this -> postParams;
@@ -723,15 +901,6 @@ class Ajaxdata extends Api
      */
     public function get_menu()
     {
-        if(isset($this->postParams['lang']) && $this->postParams['lang'] == 'en-us'){
-            \think\facade\Lang::range('en-us');
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/en-us.php';
-            \think\facade\Lang::load($file);
-        }else{
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/zh-cn.php';
-            \think\facade\Lang::load($file);
-        }
-
         $userInfo = $this->userInfo;
         if($userInfo['group_id'] == 1){
             $obj = new \app\service\service\Purview();
@@ -760,7 +929,7 @@ class Ajaxdata extends Api
     public function getTitle($storeId=0)
     {
         $storeId = $storeId ?? $this->storeId;
-        if($storeId == 24){
+        if( in_array($storeId,[24,26])){
             $title = ['title_left'=>lang('简播·值得看大数据'),'title_center'=>lang('简播·值得看智慧门店')];
 //            $this->_returnMsg(['code' => 0, 'msg' => '成功','data' => $title]);die;
             return $title;

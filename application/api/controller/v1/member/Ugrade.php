@@ -75,10 +75,10 @@ class Ugrade extends Api
         $params = $this -> postParams;
         $pkId = $params && isset($params['id']) ? intval($params['id']) : null;
 
-        if ($pkId == 1) {
+        /*if ($pkId == 1) {
             //$this->error('系统等级，不允许编辑');
-            $this->_returnMsg(['code' => 1, 'msg' => '系统等级，不允许编辑']);die;
-        }
+            $this->_returnMsg(['code' => 1, 'msg' => lang('系统等级，不允许编辑')]);die;
+        }*/
         $name = $params && isset($params['name']) ? trim($params['name']) : '';
         if (!$name && !$pkId) {
             //$this->error('等级名称不能为空');
@@ -106,12 +106,13 @@ class Ugrade extends Api
 
         if (!$pkId) {
             $data['name'] = $name;
-            $data['store_id'] = 1;
+            $data['store_id'] = $storeId;
             $data['grade_id'] = $pkId;
             $data['add_time'] = time();
             $data['update_time'] = time();
             $data['description'] = $params && isset($params['description']) ? trim($params['description']) : '';
             $data['status'] = $params && isset($params['status']) ? intval($params['status']) : 1;
+            $data['colour'] = $params && isset($params['colour']) ? trim($params['colour']) : '';
             $data['sort_order'] = $params && isset($params['sort_order']) ? intval($params['sort_order']) : 255;
         }else{
             $info = db('user_grade') -> where([['grade_id','=',$pkId],['is_del','=',0]])-> find();
@@ -122,6 +123,7 @@ class Ugrade extends Api
                 'description' => isset($params['description']) ? trim($params['description']) : $info['description'],
                 'update_time'=> time(),
                 'status'    => isset($params['status']) ? intval($params['status']) : $info['status'],
+                'colour'    => isset($params['colour']) ? trim($params['colour']) : $info['colour'],
                 'sort_order'    => isset($params['sort_order']) ? intval($params['sort_order']) : $info['sort_order'],
             ];
         }
@@ -138,7 +140,7 @@ class Ugrade extends Api
         $info = db('user_grade') -> where([['grade_id','=',$pkId],['is_del','=',0]]) -> find();
         if ($info && $info['grade_id'] == 1) {
             //$this->error('系统等级，不允许编辑');
-            $this->_returnMsg(['code' => 1, 'msg' => '系统等级，不允许编辑']);die;
+            $this->_returnMsg(['code' => 1, 'msg' => lang('系统等级，不允许编辑')]);die;
         }
         $this->_returnMsg(['code' => 0, 'msg' => '成功', 'data' => ['info' => $info]]);die;
     }
@@ -147,7 +149,7 @@ class Ugrade extends Api
         $pkId = $params && isset($params['id']) ? intval($params['id']) : 0;
         if ($pkId == 1) {
             //$this->error('系统等级，不允许删除');
-            $this->_returnMsg(['code' => 1, 'msg' => '系统等级，不允许删除']);die;
+//            $this->_returnMsg(['code' => 1, 'msg' => lang('系统等级，不允许删除')]);die;
         } elseif(!$pkId){
             $this->_returnMsg(['code' => 1, 'msg' => '参数错误']);die;
         }

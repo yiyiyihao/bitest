@@ -15,19 +15,19 @@ class TencentFaceApi extends BaseFaceApi
         parent::__construct();
         $server = Request::server();
         if ($server['HTTP_HOST'] == 'bi.api.worthcloud.net') {
-            $this->config = [
-                'appid' => '1253964067',                                //接入项目的唯一标识
-                'secretid' => 'AKIDc2D9pHqUEj02pNIkdKmzyiDTVIqAO8lA',   //SECRET_ID
-                'secretkey' => 'JOGsFQM4XmmX4LMCpEOOAh04tUt65pLd',      //SECRET_KEY
-                'bucket' => 'tencentyun',
-            ];
+//            $this->config = [
+//                'appid' => '1253964067',                                //接入项目的唯一标识
+//                'secretid' => 'AKIDc2D9pHqUEj02pNIkdKmzyiDTVIqAO8lA',   //SECRET_ID
+//                'secretkey' => 'JOGsFQM4XmmX4LMCpEOOAh04tUt65pLd',      //SECRET_KEY
+//                'bucket' => 'tencentyun',
+//            ];
         }else{
-            $this->config = [
-                'appid' => '1253543182',                                //接入项目的唯一标识-local
-                'secretid' => 'AKID4EE82o2q8NTOBopoIesvmW6bwALb2zym',   //SECRET_ID
-                'secretkey' => 'Op7GVecVCm7PZhgZKvQq9IOQK4azIUsI',      //SECRET_KEY
-                'bucket' => 'tencentyun',
-            ];
+//            $this->config = [
+//                'appid' => '1253543182',                                //接入项目的唯一标识-local
+//                'secretid' => 'AKID4EE82o2q8NTOBopoIesvmW6bwALb2zym',   //SECRET_ID
+//                'secretkey' => 'Op7GVecVCm7PZhgZKvQq9IOQK4azIUsI',      //SECRET_KEY
+//                'bucket' => 'tencentyun',
+//            ];
         }
     }
     /**

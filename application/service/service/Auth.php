@@ -45,7 +45,7 @@ class Auth{
             $action     = strtolower($name['action']);
             $name       = [];
 //             $name[]     = $module.'_*';
-            $name[]     = $controller.'_*';
+//            $name[]     = $controller.'_*';
             $name[]     = $controller.'_'.$action;
         }
         $default = [
@@ -62,6 +62,7 @@ class Auth{
                 }
             }
         }
+        #todo 验证是否是收费接口，是否过有效期
         if ($relation == 'or' and !empty($list)) {
             return true;
         }

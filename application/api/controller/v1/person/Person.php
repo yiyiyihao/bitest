@@ -21,14 +21,6 @@ class Person extends Api
 
     public function personlist()
     {
-        if(isset($this->postParams['lang']) && $this->postParams['lang'] == 'en-us'){
-            \think\facade\Lang::range('en-us');
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/en-us.php';
-            \think\facade\Lang::load($file);
-        }else{
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/zh-cn.php';
-            \think\facade\Lang::load($file);
-        }
         $params = $this -> postParams;
         $page   = !empty($params['page']) ? intval($params['page']) : 1;
         $size   = !empty($params['size']) ? intval($params['size']) : 10;
@@ -100,6 +92,7 @@ class Person extends Api
         $params = $this -> postParams;
         $toid = isset($params['fromid']) ? intval($params['fromid']) : 0; //前端字段错了，fromid和toid调换
         $fromid = isset($params['toid']) ? intval($params['toid']) : 0;  //前端字段错了，fromid和toid调换
+        $type = isset($params['type']) ? intval($params['type']) : 1;  //1人脸比较，2人脸合并
         if (!$fromid || !$toid || $fromid == $toid) {
             $this->_returnMsg(['code' => 1, 'msg' => '参数错误']);die;
         }
@@ -120,6 +113,18 @@ class Person extends Api
         }
 
         if(isset(config('faceRecognition')['search']) && config('faceRecognition')['search'] == 'baidu'){
+            $client = new \app\common\api\BaiduAipFace();
+            if($type == 1){
+                $img = [
+                    ['image'=>$from['face_token'],'image_type'=>'FACE_TOKEN'],
+                    ['image'=>$to['face_token'],'image_type'=>'FACE_TOKEN'],
+                ];
+                $return = $client->match($img);
+                if($return['error_code'] <> 0){
+                    $this->_returnMsg(['code' => 0, 'msg' => '人脸对比失败']);die;
+                }
+                $this->_returnMsg(['code' => 0, 'msg' => 'ok', 'data' => $return['result']]);die;
+            }
 
             $fromlist = db('face_token')->where(['fuser_id' => $fromid, 'is_del' => 0])->select();
             if ($fromlist && $fromCount > 0) {
@@ -127,7 +132,7 @@ class Person extends Api
                 $toPersonId = 'person_' . $toid;
                 $toGroupId = $to["tags"];
                 $fromGroupId = $from["tags"];
-                $client = new \app\common\api\BaiduAipFace();
+
 
                 if($toCount >= 16){
                     $temp = db('face_token') -> where('fuser_id','IN',[$fromid,$toid])->where('is_del','=',0)->order('fquality_value asc') ->limit($toCount)-> select();
@@ -400,7 +405,7 @@ class Person extends Api
             $this->_returnMsg(['code' => 1, 'msg' => '参数错误']);die;
         }
 
-        $info = db('face_token') ->where(['token_id' => $pkId])->find();
+        $info = db('face_token') ->where('token_id', $pkId)->find();
         if (!$info) {
             $this->_returnMsg(['code' => 1, 'msg' => '非法的id']);die;
         }
@@ -422,6 +427,13 @@ class Person extends Api
 //                 pre($faceIds);
 //                 $count = count($faceIds);
 //             }
+        }
+        if(isset(config('faceRecognition')['search']) && config('faceRecognition')['search'] == 'baidu') {
+            $client = new \app\common\api\BaiduAipFace();
+            $addReturn = $client->faceDelete($personId, $info['tags'], $info['face_token']);
+            db('face_token')->where('token_id' , $pkId)->update(['is_del'=>1]);
+            db('face_user') -> where('fuser_id',$fuserId)->setDec('token_count');
+            $this->_returnMsg(['code' => 0, 'msg' => '人脸移除成功', 'data' => ['token_id' => $pkId]]);die;
         }
         //删除个体人脸
         $result = $faceApi->facePersonDelFace($faceIds, $personId);
@@ -479,6 +491,18 @@ class Person extends Api
         if ($count >= $total) {
             $this->_returnMsg(['code' => 1, 'msg' => '当前个体人脸图片以满18张，先移除才可以添加']);die;
         }else{
+
+            if(isset(config('faceRecognition')['search']) && config('faceRecognition')['search'] == 'baidu') {
+                $client = new \app\common\api\BaiduAipFace();
+                $addReturn = $client -> addUser($info['img_url'], 'URL', $info['tags'], $personId);
+                if ($addReturn['error_code'] > 0) {
+                    $this->_returnMsg(['code' => 1, 'msg' => $addReturn['error_msg']]);die;
+                }
+                db('face_token')->where('token_id' , $pkId)->update(['is_del'=>0]);
+                db('face_user') -> where('fuser_id',$fuserId)->setInc('token_count');
+                $this->_returnMsg(['code' => 0, 'msg' => '添加成功','data' => ['token_id' => $pkId]]);die;
+            }
+
             $faceApi = new \app\common\api\TencentFaceApi();
             $apiResult = $faceApi->facePersonAddFace($info['img_url'], $personId, $info['face_token']);
             if (isset($apiResult['code']) && $apiResult['code'] != 0) {
@@ -528,13 +552,13 @@ class Person extends Api
         if ($list) {
             foreach ($list as $key => $value) {
                 $error = '';
-                $list[$key]['gender'] = lang($faceApi->_getDataDetail('gender', $value['gender'], 'name'));
-                $list[$key]['ethnicity'] = lang($faceApi->_getDataDetail('ethnicity', $value['ethnicity'], 'name'));
+                $list[$key]['gender'] = $faceApi->_getDataDetail('gender', $value['gender'], 'name');
+                $list[$key]['ethnicity'] = $faceApi->_getDataDetail('ethnicity', $value['ethnicity'], 'name');
                 if (isset($value['emotion'])) {
-                    $list[$key]['emotion'] = lang($faceApi->_getDataDetail('emotion', $value['emotion'], 'name'));
+                    $list[$key]['emotion'] = $faceApi->_getDataDetail('emotion', $value['emotion'], 'name');
                 }
                 if (isset($value['headpose'])) {
-                    $list[$key]['headpose'] = lang($faceApi->_getDataDetail('headpose', $value['headpose'], 'name'));
+                    $list[$key]['headpose'] = $faceApi->_getDataDetail('headpose', $value['headpose'], 'name');
                 }
                 if (isset($value['add_result']) && $value['add_result']) {
                     $add = json_decode($value['add_result'], TRUE);
@@ -567,7 +591,11 @@ class Person extends Api
 
         $action = $this->request->action();
         if (!$where || strtolower($action) == 'choose') {
+            $authorization = !empty(\think\facade\Request::header('authentication')) ? \think\facade\Request::header('authentication') : input('token');
+            $storeIds = cache($authorization)['admin_user']['store_ids'] ?? [1,16,18];
+
             $where[] = ['is_del' , '=', 0];
+            $where[] = ['store_id' , 'IN', $storeIds];
             if ($params) {
                 $fuid = isset($params['fuid']) ? intval($params['fuid']) : '';
                 if($fuid){

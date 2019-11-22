@@ -126,6 +126,45 @@ class Purview
                 ]
             ],
             [
+                'name' => lang('数据设置'),
+                'list' => [
+                    [
+                        'name' => lang('数据设置'),
+                        'type' => 'single',
+                        'value' => 'v1.system.setting_set',
+                        'sub_menu' => [
+                            "name"=> lang("数据设置"),
+                            "index"=> "2-2",
+                            "icon"=> "icondatasettings",
+                            "path"=> "/systemManagement/dataSetting"
+                        ]
+                    ],
+                    [
+                        'name' => lang('获取系统设置信息'),
+                        'type' => 'single',
+                        'value' => 'v1.system.setting_get',
+                        'sub_menu' => []
+                    ],
+                    [
+                        'name' => lang('获取图片置信度'),
+                        'type' => 'single',
+                        'value' => 'v1.system.setting_get_confidence',
+                        'sub_menu' => []
+                    ],
+                    [
+                        'name' => lang('编辑系统标签'),
+                        'type' => 'single',
+                        'value' => 'v1.system.setting_life_cycle',
+                        'sub_menu' => []
+                    ],
+                ],
+                'value' => 'v1.system.setting_*',
+                'menu' => [
+                    "title" => lang("系统管理"),
+                    "index" => "2"
+                ]
+            ],
+            [
                 'name' => lang('门店管理'),
                 'list' => [
                     [
@@ -333,7 +372,13 @@ class Purview
                         'type' => 'single',
                         'value' => 'v1.staffer.staffer_profile',
                         'sub_menu' => []
-                    ]
+                    ],
+                    [
+                        'name' => '新增员工、会员',
+                        'type' => 'single',
+                        'value' => 'v1.staffer.staffer_stafferAdd',
+                        'sub_menu' => []
+                    ],
                 ],
                 'value' => 'v1.staffer.staffer_*',
                 'menu' => [
@@ -400,12 +445,6 @@ class Purview
                         'value' => 'v1.member.member_edit',
                         'sub_menu' => []
                     ],
-//                     [
-//                         'name' => '设置角色',
-//                         'type' => 'single',
-//                         'value' => 'v1.staffer.staffer_staffadd',
-//                         'sub_menu' => []
-//                     ],
                     [
                         'name' => lang('删除会员'),
                         'type' => 'single',
@@ -434,6 +473,46 @@ class Purview
                 'value' => 'v1.member.member_*',
                 'menu' => [
                     "title" => lang("用户管理"),
+                    "index" => "4"
+                ]
+            ],
+            [
+                'name' => lang('全部用户'),
+                'list' => [
+                    [
+                        'name' => lang('会员等级列表'),
+                        'type' => 'single',
+                        'value' => 'v1.member.ugrade_gradelist',
+                        'sub_menu' => []
+                    ],
+                    [
+                        'name' => lang('会员等级添加'),
+                        'type' => 'single',
+                        'value' => 'v1.member.ugrade_add',
+                        'sub_menu' => []
+                    ],
+                    [
+                        'name' => lang('会员等级编辑'),
+                        'type' => 'single',
+                        'value' => 'v1.member.ugrade_edit',
+                        'sub_menu' => []
+                    ],
+                    [
+                        'name' => lang('会员等级信息'),
+                        'type' => 'single',
+                        'value' => 'v1.member.ugrade_info',
+                        'sub_menu' => []
+                    ],
+                    [
+                        'name' => lang('会员等级删除'),
+                        'type' => 'single',
+                        'value' => 'v1.member.ugrade_del',
+                        'sub_menu' => []
+                    ],
+                ],
+                'value' => 'v1.member.ugrade_*',
+                'menu' => [
+                    "title" => lang("会员等级"),
                     "index" => "4"
                 ]
             ],
@@ -768,6 +847,12 @@ class Purview
                         "index" => "2-1",
                         "icon" => "iconjiaoseguanli-icon-weixuanzhong",
                         "path" => "/systemManagement/roleManagement"
+                    ],
+                    [
+                        "name"=> lang("数据设置"),
+                        "index"=> "2-2",
+                        "icon"=> "icondatasettings",
+                        "path"=> "/systemManagement/dataSetting"
                     ]
                 ]
             ],

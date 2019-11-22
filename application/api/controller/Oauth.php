@@ -67,9 +67,9 @@ class Oauth
     }
 
     /**
-     * 获取用户信息后 验证权限
-     * @return mixed
-     */
+        * 获取用户信息后 验证权限
+        * @return mixed
+            */
     public function certification($data = []){
 
         $getCacheAccessToken = Cache::get(self::$accessTokenPrefix . $data);  //获取缓存access_token
@@ -81,7 +81,7 @@ class Oauth
 
         //验证权限
         if(!self::checkPurview($getCacheAccessToken['admin_user']))
-        {
+        {pre('没有操作权限');
             //return self::returnMsg(403,'fail',"没有操作权限");
             $this->_returnMsg(['code' => 403, 'msg' => '没有操作权限']);die;
         };

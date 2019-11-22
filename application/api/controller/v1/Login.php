@@ -14,18 +14,10 @@ use app\api\controller\Oauth;
 class Login extends Api
 {
 
-    protected $noAuth = ['login','token','get_menu'];
+    protected $noAuth = ['login','token'];
     //登录入口
     public function login($name='',$pwd='')
     {
-        if(isset($this->postParams['lang']) && $this->postParams['lang'] == 'en-us'){
-            \think\facade\Lang::range('en-us');
-            $file = dirname(dirname(dirname(__FILE__))).'/lang/en-us.php';
-            \think\facade\Lang::load($file);
-        }else{
-            $file = dirname(dirname(dirname(__FILE__))).'/lang/zh-cn.php';
-            \think\facade\Lang::load($file);
-        }
         //登入的时候验证有没有这个用户，然后请求token，返回给他
         //所以需要参数用户名或者手机号
         if($name && $pwd){
@@ -45,7 +37,7 @@ class Login extends Api
 
         //查询用户
         $map['username'] = $userName;
-        $userInfo = db('user') -> where($map) -> find();
+        $userInfo = db('user') -> where($map) ->where('is_del',0) -> find();
         if(empty($userInfo)){
             $this->_returnMsg(['code' => 1, 'msg' => '用户名不存在']);die;
         }
@@ -67,8 +59,6 @@ class Login extends Api
             $obj = new \app\service\service\Purview();
             $menu = $obj->menu();
             $userInfo['menu'] = $menu;
-        }else{
-            $userInfo['menu'] = json_decode($userInfo['menu'],true);
         }
 
         $obj = new Token();
@@ -167,6 +157,7 @@ class Login extends Api
             $this->_returnMsg(['code' => 1, 'msg' => '失败']);die;
         }
         $storeId = isset($stores['store_id']) ? $stores['store_id']: 0;
+        $shopCode = isset($stores['shop_code']) ? $stores['shop_code']: '';
         $storeIds = isset($stores['store_ids']) ? $stores['store_ids'] : [];
         //写入日志记录#TODO
 //      api('Admin','AdminLog','addLog','登录系统');
@@ -177,14 +168,28 @@ class Login extends Api
             $groupPurview = $userInfo['groupPurview'];
         }
         $menu = $groupInfo['menu'];
+        if(!empty($menu)){
+            $menu = json_decode($menu,true);
+            foreach($menu as $k => $v){
+                $menu[$k]['title'] = lang($v['title']);
+                if(!empty($v['menuItemList'])){
+                    foreach($v['menuItemList'] as $key => $value){
+                        $menu[$k]['menuItemList'][$key]['name'] = lang($value['name']);
+                    }
+                }
+            }
+        }
+
         $adminUser = [
             'user_id'     => $userInfo['user_id'],
+            'openid'     => $userInfo['openid'],
             'username'    => $userInfo['username'],
             'phone'       => $userInfo['phone'],
             'email'       => $userInfo['email'],
             'add_time'    => $userInfo['add_time'],
             'group_id'    => $userInfo['group_id'],
             'store_id'    => $storeId,
+            'shop_code'    => $shopCode,
             'store_ids'   => $storeIds,
             'last_login_time' => $userInfo['last_login_time'],
             'groupPurview'    => $groupPurview,
@@ -210,10 +215,10 @@ class Login extends Api
             $errMsg = '账号未授权/已禁用';
             if ($userInfo['group_id'] == STORE_SUPER_ADMIN) {
                 //获取当前用户管理的门店/门店列表
-                $storeIds = db('store_member')->alias('SM')->join($join)->where($where)->order('SM.add_time DESC')->column('SM.store_id');
-                if ($storeIds) {
-                    $sub_storeIds = db('store') -> where(['parent_id' => $storeIds,'is_del' => 0, 'status' => 1]) -> column('store_id');
-                    $storeIds = $sub_storeIds ? array_merge($storeIds,$sub_storeIds) : $storeIds;
+                $storeids = db('store_member')->alias('SM')->join($join)->where($where)->order('SM.add_time DESC')->field('S.shop_code,SM.store_id')->find();
+                if ($storeids) {
+                    $sub_storeIds = db('store') -> where(['parent_id' => $storeids['store_id'],'is_del' => 0, 'status' => 1]) -> column('store_id');
+                    $storeIds = $sub_storeIds ? array_merge([$storeids['store_id']],$sub_storeIds) : [$storeids['store_id']];
                 }
                 if (!$storeIds) {
                     //$this->error = '账号未授权/已禁用';
@@ -221,6 +226,7 @@ class Login extends Api
                     $this->_returnMsg(['code' => 1, 'msg' => $errMsg]);die;
                 }
                 $storeId = $storeIds[0];
+                $shopCode = $storeids['shop_code'];
             }else{
                 //获取当前用户管理的门店
                 $manage = db('store_member')->alias('SM')->join($join)->where($where)->order('SM.add_time DESC')->find();
@@ -230,36 +236,19 @@ class Login extends Api
                     $this->_returnMsg(['code' => 1, 'msg' => $errMsg]);die;
                 }
                 $storeId = $manage['store_id'];
+                $shopCode = $manage['shop_code'];
                 $storeIds = [$storeId];
             }
         }else{
             $storeId = 1;
-            $storeIds = db('store')->where([['is_del','=',0],['status','=',1]])->column('store_id');
+            $storeIds = db('store')->where([['is_del','=',0],['status','=',1]])->field('store_id,shop_code')->select();
+            $storeIds = array_column($storeIds,'store_id');
+            $shopCode = $storeIds['0']['shop_code'];
         }
         return [
             'store_id' => $storeId,
+            'shop_code' => $shopCode,
             'store_ids' => $storeIds,
         ];
-    }
-
-    public function get_menu()
-    {
-        if(isset($this->postParams['lang']) && $this->postParams['lang'] == 'en-us'){
-            \think\facade\Lang::range('en-us');
-            $file = dirname(dirname(dirname(__FILE__))).'/lang/en-us.php';
-            \think\facade\Lang::load($file);
-        }else{
-            $file = dirname(dirname(dirname(__FILE__))).'/lang/zh-cn.php';
-            \think\facade\Lang::load($file);
-        }
-
-        pre($this->userInfo);
-//        if($userInfo['group_id'] == 1){
-//            $obj = new \app\service\service\Purview();
-//            $menu = $obj->menu();
-//            $userInfo['menu'] = $menu;
-//        }else{
-//            $userInfo['menu'] = json_decode($userInfo['menu'],true);
-//        }
     }
 }

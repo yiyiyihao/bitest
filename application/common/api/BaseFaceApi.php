@@ -94,6 +94,7 @@ class BaseFaceApi
             1 => [
                 'level' => 1,
                 'name' => '0-10'.lang('岁'),
+                'tag' => ['1'=>lang('萌娃'),'2'=>lang('萌娃')],
                 'min' => 0,
                 'max' => 10,
                 'count' => 0,
@@ -101,6 +102,7 @@ class BaseFaceApi
             2 => [
                 'level' => 2,
                 'name' => '10-20'.lang('岁'),
+                'tag' => ['1'=>lang('正太'),'2'=>lang('萝莉')],
                 'min' => 10,
                 'max' => 20,
                 'count' => 0,
@@ -108,6 +110,7 @@ class BaseFaceApi
             3 => [
                 'level' => 3,
                 'name' => '20-30'.lang('岁'),
+                'tag' => ['1'=>lang('鲜肉'),'2'=>lang('仙女')],
                 'min' => 20,
                 'max' => 30,
                 'count' => 0,
@@ -115,6 +118,7 @@ class BaseFaceApi
             4 => [
                 'level' => 4,
                 'name' => '30-40'.lang('岁'),
+                'tag' => ['1'=>lang('型男'),'2'=>lang('女神')],
                 'min' => 30,
                 'max' => 40,
                 'count' => 0,
@@ -122,6 +126,7 @@ class BaseFaceApi
             5 => [
                 'level' => 5,
                 'name' => '40-50'.lang('岁'),
+                'tag' => ['1'=>lang('萌叔'),'2'=>lang('御姐')],
                 'min' => 40,
                 'max' => 50,
                 'count' => 0,
@@ -129,6 +134,7 @@ class BaseFaceApi
             6 => [
                 'level' => 6,
                 'name' => '50-60'.lang('岁'),
+                'tag' => ['1'=>lang('大叔'),'2'=>lang('娇娘')],
                 'min' => 50,
                 'max' => 60,
                 'count' => 0,
@@ -136,6 +142,7 @@ class BaseFaceApi
             7 => [
                 'level' => 7,
                 'name' => lang('60岁以上'),
+                'tag' => ['1'=>lang('伯公'),'2'=>lang('媪妪')],
                 'min' => 60,
                 'max' => 0,
                 'count' => 0,
@@ -171,7 +178,7 @@ class BaseFaceApi
             $client = new \app\common\api\BaiduAipFace();
             // 如果有可选参数
             $options = array();
-            $options["face_field"] = "age,beauty,expression,face_shape,gender,glasses,landmark,race,quality,eye_status,emotion,face_type,quality";
+            $options["face_field"] = "age,beauty,expression,face_shape,gender,glasses,landmark,race,quality,eye_status,emotion,face_type,quality,face_probability";
 
             // 带参数调用人脸检测
             $detectResultBaidu = $client->detect($faceImg, 'URL', $options);
@@ -179,7 +186,9 @@ class BaseFaceApi
                 $detectResultBaidu['code'] = 1;
                 return $detectResultBaidu;
             }
-            if($detectResultBaidu['result']['face_list']['0']['quality']['illumination']<=80){
+            $confidence = db('face_confidence')->where('store_id',$storeId)->value('confidence');
+            $confidence = $confidence ?? 80;
+            if(($detectResultBaidu['result']['face_list']['0']['face_probability'] * 100 + (1-$detectResultBaidu['result']['face_list']['0']['quality']['blur']) * 100)/2 <= $confidence){
                 return ['code' => 1, 'errMsg' => '图片质量不行', 'face_img' => $faceImg];
             }
             if (isset($detectResultBaidu['result'])) {
@@ -187,7 +196,7 @@ class BaseFaceApi
                 $faces['0']['attributes']['age']['value'] = $detectResultBaidu['result']['face_list']['0']['age'];
                 $faces['0']['attributes']['emotion'] = [$detectResultBaidu['result']['face_list']['0']['emotion']['type'] => $detectResultBaidu['result']['face_list']['0']['emotion']['probability']];
                 $faces['0']['attributes']['headpose'] = $detectResultBaidu['result']['face_list']['0']['angle'];
-                $faces['0']['attributes']['facequality']['value'] = $detectResultBaidu['result']['face_list']['0']['quality']['illumination']; //脸部区域的光照程度 越大表示光照越好
+                $faces['0']['attributes']['facequality']['value'] = (1-$detectResultBaidu['result']['face_list']['0']['quality']['blur']) * 100;
                 $faces['0']['attributes']['facequality']['threshold'] = 50;
                 $faces['0']['attributes']['ethnicity']['value'] = $detectResultBaidu['result']['face_list']['0']['race']['type'];
                 $faces['0']['face_rectangle'] = $detectResultBaidu['result']['face_list']['0']['angle'];
@@ -583,6 +592,7 @@ class BaseFaceApi
                     'update_time'   => time(),
                     'faceset_id'    => $faceSetId,
                     'api_type'      => 'baidu',
+                    'store_id'      => $storeId,
                 ];
                 $fuserId = db('face_user')->insertGetId($data);
                 $personId = 'person_'.$fuserId;
@@ -591,7 +601,7 @@ class BaseFaceApi
             $client = new \app\common\api\BaiduAipFace();
             $fuserExist = db('face_user')->where([['fuser_id','=', substr($personId,7)], ['is_del','=',0]])->find();
             $lab = true;
-            if($fuserExist['token_count'] >= 5){
+            if($fuserExist['token_count'] >= 10){
                 $lab = false;
                 $temp = db('face_token') -> where('fuser_id','=',substr($personId,7))->where('is_del','=',0)->order('fquality_value asc') -> find();
                 $addReturn = $client->faceDelete($personId, $groupId, $temp['face_token']);
@@ -690,6 +700,7 @@ class BaseFaceApi
                 'update_time'   => time(),
                 'faceset_id'    => $faceSetId,
                 'api_type'      => $apiType,
+                'store_id'      => $storeId,
             ];
             $fuserId = db('face_user')->insertGetId($data);
             $personId = 'person_'.$fuserId;

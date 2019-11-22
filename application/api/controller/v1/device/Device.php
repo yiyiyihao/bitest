@@ -438,6 +438,9 @@ class Device extends Api
             ];
             if($params['store_id'] <> $info['store_id']){
                 #TODO 判断设备是否在线，不在线不给改所属门店
+                if($info['status'] == 0){
+                    $this->_returnMsg(['code' => 1, 'msg' => '设备不在线，不给切换门店']);die;
+                }
                 $userInfo = db('store_member')->alias('SM')->join('user U','U.user_id=SM.user_id','left') -> where('SM.store_id','=',$params['store_id']) -> where('SM.is_del','=',0)->where('U.group_id','=',2)->find();
                 $deviceApi = new \app\common\api\DeviceApi();
 
@@ -462,14 +465,6 @@ class Device extends Api
 
     public function getTypeList()
     {
-        if(isset($this->postParams['lang']) && $this->postParams['lang'] == 'en-us'){
-            \think\facade\Lang::range('en-us');
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/en-us.php';
-            \think\facade\Lang::load($file);
-        }else{
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/zh-cn.php';
-            \think\facade\Lang::load($file);
-        }
         $list = $this->positionTypes();
         $this->_returnMsg(['code' => 0, 'msg' => '设备添加授权成功','data'=>['list'=>$list]]);die;
     }

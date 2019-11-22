@@ -17,22 +17,73 @@ class User extends Api
         $params = $this -> postParams;
         $page   = !empty($params['page']) ? intval($params['page']) : 1;
         $size   = !empty($params['size']) ? intval($params['size']) : 10;
+        $labelId   = !empty($params['label_id']) ? intval($params['label_id']) : 0;
+
+        $join1 = [];
+        $where_label = [];
+        if($labelId){
+            $res = db('label')->where([
+                ['label_id','=',$labelId],
+                ['is_del','=',0]
+            ])->find();
+            if(!$res){
+                $this->_returnMsg(['code' => 0, 'msg' => '成功', 'data' => ['count'=>0,'page'=>$page,'list' => []]]);die;
+            }
+            if($res['type'] > 2){
+                //系统标签
+                if($res['type'] == 3){//新客户标签
+                    if($res['mark_type'] == 1){//访问天数统计
+                        $where_label = [
+                            ['DV.total_visit_days','<',$res['times']],
+                        ];
+                    }else{//访问次数统计
+                        $where_label = [
+                            ['DV.total_visit_counts','>=',$res['times']],
+                        ];
+                    }
+                }elseif ($res['type'] == 4 || $res['type'] == 5){//活跃客户标签//忠诚客户标签
+                    if($res['mark_type'] == 1){//访问天数统计
+                        $where_label = [
+                            ['DV.total_visit_days','>=',$res['times']],
+                        ];
+                    }else{//访问次数统计
+                        $where_label = [
+                            ['DV.total_visit_counts','>=',$res['times']],
+                        ];
+                    }
+                }else{//流失客户标签
+                    $where_label = [
+                        ['DV.recent_time','<',time()-$res['times'] * 86400], //周天代替天
+                    ];
+                }
+
+
+
+            }else{
+                //自定义标签
+                $join1 = [['member_label ML','ML.fuser_id=DV.fuser_id','LEFT']];
+                $where_label = [
+                    ['ML.label_id','=',$labelId],
+                ];
+            }
+
+        }
         $alias = 'DV';
         $join = [
             ['face_user FU', 'DV.fuser_id = FU.fuser_id', 'INNER'],
-            ['store_member SM', 'SM.fuser_id = DV.fuser_id AND SM.is_del = 0 AND SM.store_id = '.$this->userInfo['store_id'], 'LEFT'],
+            ['store_member SM', 'SM.fuser_id = DV.fuser_id AND SM.is_del = 0', 'LEFT'],
             ['user_group UG', 'UG.ugroup_id = SM.group_id', 'LEFT'],
         ];
         $where = [
-            'DV.is_del' => 0,
-            'DV.store_id' => $this->userInfo['store_id'],
+            ['DV.is_del' ,'=', 0],
+            ['DV.store_id' ,'IN', $this->userInfo['store_ids']],
         ];
         $list = [];
         $field = 'DV.visit_id, DV.store_id, FU.fuser_id, FU.avatar, FU.age, FU.gender, SM.member_id, SM.is_admin, UG.name as group_name, FU.add_time';
         $order = 'FU.fuser_id DESC';
-        $count = db('day_visit')->field($field)->alias($alias)->join($join)->where($where)->group('DV.fuser_id')->count();
+        $count = db('day_visit')->field($field)->alias($alias)->join(array_merge($join,$join1))->where(array_merge($where,$where_label))->group('DV.fuser_id')->count();
         if ($count > 0) {
-            $list = db('day_visit')->field($field)->alias($alias)->join($join)->where($where)->group('DV.fuser_id')->limit(($page-1)*$size,$size)->order($order)->select();
+            $list = db('day_visit')->field($field)->alias($alias)->join(array_merge($join,$join1))->where(array_merge($where,$where_label))->group('DV.fuser_id')->limit(($page-1)*$size,$size)->order($order)->select();
             if ($list) {
                 foreach ($list as $key => $value) {
                     if (empty($value['member_id'])) {
@@ -58,7 +109,7 @@ class User extends Api
     /**
      * 用户详情
      */
-    public function detail($return = FALSE)
+    public function detail($return1 = FALSE)
     {
         $result = $this->_verifyInfo();
         $info = $result['info'];
@@ -69,16 +120,29 @@ class User extends Api
             $info['realname'] = $user['realname'];
             $info['phone'] = $user['phone'];
             if ($user['is_admin'] === 0){
-                $info['user_type'] = '会员';
+                $info['user_type'] = lang('会员');
             }else{
                 $info['user_type'] = $user['group_name'];
             }
+            $return = db('member_label')->alias('ML')->join('label L','ML.label_id=L.label_id','left')->where([
+                ['ML.is_del','=',0],
+                ['L.is_del','=',0],
+                ['ML.member_id','=',$user['member_id']],
+            ])->field('L.name')->select();
+            $info['tag'] = [];
+            if($return){
+                foreach($return as $k =>$v){
+                    $info['tag'][] = $v['name'];
+                }
+            }
+
         }else{
             $info['nickname'] = $info['realname'] = $info['phone'] = $info['card_no'] = '';
-            $info['user_type'] = '访客';
+            $info['user_type'] = lang('访客');
+            $info['tag'] = [];
         }
-        if ($return) {
-            return $result;
+        if ($return1) {
+            return ['info'=>$info,'user'=>$user];
         }
         unset($info['is_admin']);
         $this->_returnMsg(['code' => 0, 'msg' => '成功', 'data' => $info]);die;
@@ -86,7 +150,10 @@ class User extends Api
     
     public function getStores()
     {
-        $storeIds = $this->userInfo['store_ids'] ? $this->userInfo['store_ids'] : [$this->userInfo['store_id']];
+//        $storeIds = $this->userInfo['store_ids'] ? $this->userInfo['store_ids'] : [$this->userInfo['store_id']];
+        $request = new \think\Request;
+        $storeInfoModel = new \app\api\controller\v1\Login($request);
+        $storeIds = $storeInfoModel->getUserStores($this->userInfo)['store_ids'];
         $where = [
             ['store_id', 'IN', $storeIds],
             ['is_del', '=', 0],
@@ -133,12 +200,13 @@ class User extends Api
         if (!$fuserId) {
             $this->_returnMsg(['code' => 1, 'msg' => '缺少参数']);die;
         }
-        $field = 'fuser_id, avatar, age, gender, ethnicity';
+        $field = 'fuser_id, avatar, age,age_level, gender, ethnicity';
         $info = db('face_user')->where(['fuser_id' => $fuserId])->field($field)->find();
         if (!$info) {
             $this->_returnMsg(['code' => 1, 'msg' => '用户不存在,请返回重试']);die;
         }
         $api = new \app\common\api\BaseFaceApi();
+        $info['gender_id'] = $info['gender'];
         $info['gender'] = $api->_getDataDetail('gender', $info['gender'], 'name');
         $info['ethnicity'] = $api->_getDataDetail('ethnicity', $info['ethnicity'], 'name');
         $join = [

@@ -142,7 +142,7 @@ class Face extends ApiBase
             $result = $faceApi->_dayTotal($storeId, $blockId, $deviceId, $this->captureTime, $customeStep, $personStep, $stayTimesValue, $ageLevel, $genderId, $userType, $ethnicityId);
             $result = $faceApi->_workLog($storeId, $fuserId, $this->captureTime, $this->imgFile);
 
-            $this->_sendNotify($storeId, $fuserId, $this->captureTime);
+            $this->_sendNotify($storeId, $fuserId, $this->imgFile);
 
         }
         $this->_returnMsg(['code' => 0, 'msg' => '图片解析成功', 'face_img' => $this->imgFile]);
@@ -154,8 +154,74 @@ class Face extends ApiBase
      * @param int $captureTime
      * @return boolean
      */
-    protected function _sendNotify($storeId, $fuserId, $captureTime)
+    protected function _sendNotify($storeId, $fuserId, $url)
     {
+        //测试
+        /*$smsApi = new \app\common\api\SmsApi();
+        $phone = '15818688157';
+        $param = [
+            'name' => '黄益豪',
+            'level' => 'VIP'
+        ];
+        $resul = $smsApi->send($phone, 'RemindShop', $param);
+        $push = new \app\common\service\PushBase();
+        $name = '黄益豪';
+        $level = 'VIP';
+        $sendData = [
+            'url'            => $url,
+            'data'           => "会员 " . $name . "会员等级 " . $level . "进店请予以关注！",
+        ];
+        $result = $push->sendToUid($storeId, json_encode($sendData));
+        return true;*/
+
+
+
+        //短信通知
+        $smsApi = new \app\common\api\SmsApi();
+        $result = db('store_member')->alias('SM')
+            ->join([
+                ['user U','U.user_id=SM.user_id','left'],
+                ['user_grade UG','UG.grade_id=SM.grade_id','left'],
+            ])->where([
+                ['SM.store_id','=',$storeId],
+                ['SM.is_admin','=',0],
+                ['SM.is_del','=',0],
+                ['SM.fuser_id','=',$fuserId],
+            ])->field('U.realname,U.phone,UG.name')->find();
+
+        if(!$result){
+            return false;
+        }
+
+        $res = db('store_member')->alias('SM')
+            ->join([
+                ['user U','U.user_id=SM.user_id','left'],
+            ])->where([
+                ['SM.store_id','=',$storeId],
+                ['SM.is_admin','=',2],
+                ['SM.group_id','=',3],
+                ['SM.is_del','=',0],
+            ])->field('U.phone')->select();
+
+        $param = [
+            'name' => $result['realname'],
+            'level' => $result['name']
+        ];
+        foreach($res as $kk => $vv){
+            $phone = $vv['phone'];
+            $resul = $smsApi->send($phone, 'RemindShop', $param);
+        }
+
+        //web端通知
+        $push = new \app\common\service\PushBase();
+        $name = $result['realname'];
+        $level = $result['name'];
+        $sendData = [
+            'url'            => $url,
+            'data'           => lang("会员") .":" . $name . lang("会员等级") .":" . $level . lang("进店请予以关注！"),
+        ];
+        $result = $push->sendToUid($storeId, json_encode($sendData));
+
         return FALSE;
         //判断当前门店是否存在会员到店提醒配置
         $config = db('config')->where(['is_del' => 0, 'status' => 1, 'config_name' => 'member_reminder'])->value('config_value');

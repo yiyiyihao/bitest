@@ -6,6 +6,7 @@ use think\Request;
 
 class Ugroup extends Api
 {
+    public $noAuth = ['purview_list','purviewlist'];
     public function __construct(Request $request)
     {
         parent::__construct($request);
@@ -164,37 +165,55 @@ class Ugroup extends Api
     //权限列表
     public function purviewlist()
     {
-//        $params = $this -> postParams;
-//        $pkId = $params && isset($params['id']) ? intval($params['id']) : 0;
-//        if(!$pkId)
-//        {
-//            $this->_returnMsg(['code' => 1, 'msg' => '参数缺失']);die;
-//        }
-//
-//        $info = db('user_group') -> where([['ugroup_id','=',$pkId],['is_del','=',0]]) -> find();
-//        if(!$info)
-//        {
-//            $this->_returnMsg(['code' => 1, 'msg' => '参数错误']);die;
-//        }
-//
-//        $grouppurview = $info['menu_json'];
-//
-//        if($grouppurview != 'all' && $grouppurview != ''){
-////                     $grouppurview = json_decode($grouppurview,true);
-//        }
-//                 $grouppurview = 'all';
-        if(isset($this->postParams['lang']) && $this->postParams['lang'] == 'en-us'){
-            \think\facade\Lang::range('en-us');
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/en-us.php';
-            \think\facade\Lang::load($file);
-        }else{
-            $file = dirname(dirname(dirname(dirname(__FILE__)))).'/lang/zh-cn.php';
-            \think\facade\Lang::load($file);
+        //获取菜单
+        $userInfo = $this->userInfo;
+
+        $data = db('auth_rule') -> where([
+            ['menu_status','=',1],
+            ['is_fees','=',0],
+            ['is_del','=',0],
+        ])->select();
+        $tree = [];
+        if(!empty($data)){
+            $tree = $this->get_menu_tree($data);
         }
-        //取得当前用户组授权树
-        $obj = new \app\service\service\Purview();
-        $purviewvList = $obj->getGroupPurview();
-        $this->_returnMsg(['code' => 0, 'msg' => '成功', 'data' => ['purviewvList' => $purviewvList]]);die;
+        $this->_returnMsg(['code' => 0, 'msg' => '成功','data' => $tree]);die;
+
+        if($userInfo['group_id'] == 1){
+
+        }else{
+            $groupInfo = db("user_group")->where(['ugroup_id' => $userInfo['group_id']])->find();
+
+            $menuData = json_decode($groupInfo['menu'],true);
+            if(!empty($menuData)){
+                foreach($menuData as $k => $v){
+                    $menuData[$k]['title'] = lang($v['title']);
+                    if(is_array($v['menuItemList'])){
+                        foreach($v['menuItemList'] as $key => $value){
+                            $menuData[$k]['menuItemList'][$key]['name'] = lang($value['name']);
+                        }
+                    }
+                }
+            }
+            $menu = $menuData;
+        }
+
+        $this->_returnMsg(['code' => 0, 'msg' => '成功','data' => $menu]);die;
+    }
+
+    //purviewlist1
+    public function purview_list()
+    {
+        $where = [
+            ['is_del','=',0],
+            ['is_fees','=',0],
+        ];
+        $data = db('auth_rule') ->where($where) ->select();
+        $tree = [];
+        if(!empty($data)){
+            $tree = $this->get_tree($data);
+        }
+        $this->_returnMsg(['code' => 0, 'msg' => '成功', 'data' => ['purviewvList' => $tree]]);die;
     }
     
     /**
@@ -323,5 +342,86 @@ class Ugroup extends Api
         }
         return $data;
     }
+
+    /**
+     * 二极分类树 getTree($categories)
+     * @param array $data
+     * @param int $parent_id
+     * @param int $level
+     * @return array
+     */
+    public function get_tree($data = [], $p_id = 0, $level = 0)
+    {
+        $tree = [];
+        if ($data && is_array($data)) {
+            foreach ($data as $v) {
+                if ($v['p_id'] == $p_id) {
+                    if($p_id == 0){
+                        $tree[] = [
+//                    'id' => $v['id'],
+//                    'level' => $level,
+//                    'title' => $v['title'],
+//                    'p_id' => $v['p_id'],
+                            'name' => $v['title'],
+                            'value' => $v['route'],
+//                    'menu' => $v['title'],
+                            'list' => $this->get_tree($data, $v['id'], $level + 1),
+                        ];
+                    }else{
+                        $tree[] = [
+//                    'id' => $v['id'],
+//                    'level' => $level,
+//                    'title' => $v['title'],
+//                    'p_id' => $v['p_id'],
+                            'name' => $v['title'],
+                            'value' => $v['route'],
+//                    'submenu' => $v['title'],
+                            'type' => 'single',
+                        ];
+                    }
+
+                }
+            }
+        }
+        return $tree;
+    }
+
+    public function get_menu_tree($data = [], $p_id = 0, $level = 0)
+    {
+        $tree = [];
+        if ($data && is_array($data)) {
+            foreach ($data as $v) {
+                if ($v['p_menu_index'] == $p_id) {
+                    if($p_id == 0){
+                        $tree[] = [
+//                    'id' => $v['id'],
+//                    'level' => $level,
+//                    'title' => $v['title'],
+//                    'p_id' => $v['p_id'],
+                            'title' => $v['title'],
+                            'index' => $v['menu_index'],
+//                    'menu' => $v['title'],
+                            'menuItemList' => $this->get_menu_tree($data, $v['menu_index'], $level + 1),
+                        ];
+                    }else{
+                        $tree[] = [
+//                    'id' => $v['id'],
+//                    'level' => $level,
+//                    'title' => $v['title'],
+//                    'p_id' => $v['p_id'],
+                            'name' => $v['title'],
+                            'index' => $v['menu_index'],
+                            'icon' => $v['icon'],
+//                    'submenu' => $v['title'],
+                            'path' => $v['path'],
+                        ];
+                    }
+
+                }
+            }
+        }
+        return $tree;
+    }
+
 
 }
